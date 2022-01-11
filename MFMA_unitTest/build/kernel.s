@@ -26,7 +26,6 @@ kernel_func:
 L_kernel_start:
     s_sub_u32 s[s_iter], s[s_iter], 1
     .itr = 0
-    .rept inst_loop
         v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
         v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
         v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
@@ -75,7 +74,6 @@ L_kernel_start:
         .if .itr > (v_end-4+1)
             .itr = 0
         .endif
-    .endr
     s_cmp_gt_u32 s[s_iter], 0
     s_cbranch_scc1 L_kernel_start
 
