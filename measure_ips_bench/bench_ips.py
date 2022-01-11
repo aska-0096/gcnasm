@@ -11,7 +11,7 @@ k_CPP_SRC = "bench.cpp"
 k_CPP_TARGET = "bench.exe"
 k_ASM_SRC = "kernel.s"
 k_ASM_TARGET = k_HSACO
-k_ARCH = "gfx906"
+k_ARCH = "gfx908"
 k_INST_LOOP = [256, 512, 768, 1024]
 USE_HIP_CLANG = True
 

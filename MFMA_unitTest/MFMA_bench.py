@@ -13,10 +13,93 @@ k_CPP_SRC = "bench.cpp"
 k_CPP_TARGET = "bench.exe"
 k_ASM_SRC = "kernel.s"
 k_ASM_TARGET = k_HSACO
-k_ARCH = "gfx90a"
+k_ARCH = "gfx908"
 k_INST_LOOP = [256, 512, 768, 1024]
 USE_HIP_CLANG = True
 
+AMDGPU_PRECISION_FP32   = (0 << 20)
+AMDGPU_PRECISION_FP16   = (1 << 20)
+AMDGPU_PRECISION_BF16   = (2 << 20)
+AMDGPU_PRECISION_INT8   = (3 << 20)
+
+def inst_mfma_data_type_to_string(data_type):
+    if data_type == AMDGPU_PRECISION_FP32:
+        return 'fp32'
+    if data_type == AMDGPU_PRECISION_FP16:
+        return 'fp16'
+    if data_type == AMDGPU_PRECISION_BF16:
+        return 'bf16'
+    if data_type == AMDGPU_PRECISION_INT8:
+        return 'int8'
+    assert False
+
+class inst_mfma_t(object):
+    '''
+    http://llvm.org/docs/AMDGPU/AMDGPUAsmGFX908.html
+    '''
+    def __init__(self, m, n, k, data_type, cycle, num_v_a, num_v_b, num_a_c, num_blocks, **options):
+        #self.arch_config = arch_config
+        self.m = m
+        self.n = n
+        self.k = k
+        self.data_type = data_type
+        self.cycle = cycle
+        self.num_v_a = num_v_a
+        self.num_v_b = num_v_b
+        self.num_a_c = num_a_c
+        self.num_blocks = num_blocks
+        self.accvgpr_unified = False
+        self.options = options
+        # self.num_a_c_per_lanegroup = 4      # all xdlops instruction output agpr is 4 agpr per lanegroup.
+        #assert arch_config.arch == AMDGPU_ARCH_GFX908 and arch_config.use_xdlops
+
+    def name(self):
+        if 'name' in self.options and self.options['name'] != None:
+            return self.options['name']
+        def src_datatype_string(data_type_string):
+            if data_type_string == 'fp32':
+                return 'f32'
+            if data_type_string == 'fp16':
+                return 'f16'
+            if data_type_string == 'bf16':
+                return 'bf16'
+            if data_type_string == 'int8':
+                return 'i8'
+            assert False, "unknow type :{}".format(data_type_string)
+        mfma_acc_type = 'i32' if self.data_type == AMDGPU_PRECISION_INT8 else 'f32' # TODO: int8 mfma accumulate type is i32
+        mfma_trait = '{}x{}x{}'.format(self.m, self.n, self.k) + src_datatype_string(inst_mfma_data_type_to_string(self.data_type))
+        mfma_inst = 'v_mfma_{}_{}'.format(mfma_acc_type, mfma_trait)
+        if 'bf16_1k' in self.options and self.options['bf16_1k'] and self.data_type == AMDGPU_PRECISION_BF16:
+            mfma_inst += '_1k'
+        return mfma_inst
+
+    def __call__(self, reg_d, reg_a, reg_b, reg_c, cbsz=0, abid=0, blgp=0):
+        mfma_inst = self.name()
+        cbsz_str = "cbsz:{}".format(cbsz) if cbsz != 0 else ""
+        abid_str = "abid:{}".format(abid) if abid != 0 else ""
+        blgp_str = "blgp:{}".format(blgp) if blgp != 0 else ""
+        if self.accvgpr_unified:
+            return  "{} v[{}], v[{}], v[{}], v[{}] {} {} {}".format(mfma_inst, reg_d, reg_a, reg_b, reg_c, cbsz_str, abid_str, blgp_str)
+        else:
+            return  "{} a[{}], v[{}], v[{}], a[{}] {} {} {}".format(mfma_inst, reg_d, reg_a, reg_b, reg_c, cbsz_str, abid_str, blgp_str)
+
+    def get_nop_count_mfma_acc_raw(self):
+        # in unit of passes, aka 4 cycle
+        return (self.cycle // 4) + 2
+
+
+#                                     m,  n,  k,  precision,           cycle, v_a, v_b, a_c, #block
+v_mfma_f32_4x4x4f16     = inst_mfma_t(4,  4,  4,  AMDGPU_PRECISION_FP16,   8,   2,   2,  4,    16)
+v_mfma_f32_16x16x4f16   = inst_mfma_t(16, 16, 4,  AMDGPU_PRECISION_FP16,  32,   2,   2,  16,   4 )
+v_mfma_f32_16x16x16f16  = inst_mfma_t(16, 16, 16, AMDGPU_PRECISION_FP16,  32,   2,   2,  4,    1 )
+v_mfma_f32_32x32x4f16   = inst_mfma_t(32, 32, 4,  AMDGPU_PRECISION_FP16,  64,   2,   2,  32,   2 )
+v_mfma_f32_32x32x8f16   = inst_mfma_t(32, 32, 8,  AMDGPU_PRECISION_FP16,  64,   2,   2,  16,   1 )
+
+v_mfma_f32_4x4x4bf16_1k     = inst_mfma_t(4,  4,  4,  AMDGPU_PRECISION_BF16,   8,   2,   2,  4,    16, bf16_1k=True)
+v_mfma_f32_16x16x4bf16_1k   = inst_mfma_t(16, 16, 4,  AMDGPU_PRECISION_BF16,  32,   2,   2,  16,   4 , bf16_1k=True)
+v_mfma_f32_16x16x16bf16_1k  = inst_mfma_t(16, 16, 16, AMDGPU_PRECISION_BF16,  32,   2,   2,  4,    1 , bf16_1k=True)
+v_mfma_f32_32x32x4bf16_1k   = inst_mfma_t(32, 32, 4,  AMDGPU_PRECISION_BF16,  64,   2,   2,  32,   2 , bf16_1k=True)
+v_mfma_f32_32x32x8bf16_1k   = inst_mfma_t(32, 32, 8,  AMDGPU_PRECISION_BF16,  64,   2,   2,  16,   1 , bf16_1k=True)
 class cpp_src_t:
     def get_cxxflags(self):
         if USE_HIP_CLANG:
@@ -46,7 +129,7 @@ class cpp_src_t:
             (out, _) = proc.communicate()
             if proc.returncode != 0:
                 print(cmd)
-                msg = "Compilation error:\n"
+                msg = "CPP Compilation error:\n"
                 msg += str(out)
                 raise RuntimeError(msg)
         save_dir = os.getcwd()
@@ -59,6 +142,7 @@ class cpp_src_t:
     def get_src(self):
         src = '''\
 #include <stdio.h>
+#include <string>
 #include <hip/hip_runtime.h>
 #include <random>
 #include <iostream>
@@ -95,17 +179,18 @@ int main(int argc, char ** argv){{
     int total_loop=100;
     int warm_ups = 5;
     int i;
-    int inst_blocks = 1024*16;
-    int inst_loop = 256;
+    int inst_iter = 100;
+    //int inst_loop = 256;
     int bdx = 256;
     int gdx = num_cu;
 
+    float rand_seed = ((float)(rand() % 100));
     struct {{
-        int * dummy_ptr;
-        int inst_blocks;
+        float rand_seed;
+        int inst_iter;
     }} args;
     size_t arg_size = sizeof(args);
-    args.inst_blocks = inst_blocks;
+    args.inst_iter = inst_iter;
     void* config[] = {{HIP_LAUNCH_PARAM_BUFFER_POINTER, &args, HIP_LAUNCH_PARAM_BUFFER_SIZE,
                     &arg_size, HIP_LAUNCH_PARAM_END}};
 
@@ -129,10 +214,16 @@ int main(int argc, char ** argv){{
     hipEventDestroy(evt_11);
 
     float time_per_loop = elapsed_ms/total_loop;
-    float tips = (double)inst_loop*inst_blocks*num_cu*bdx/time_per_loop/1e9;
+    //float tips = (double)inst_loop*inst_blocks*num_cu*bdx/time_per_loop/1e9;
+    //argv 2~5 = M, N, K, blocks
+    int M = std::stoull(std::string(argv[2]));
+    int N = std::stoull(std::string(argv[3]));
+    int K = std::stoull(std::string(argv[4]));
+    int blocks = std::stoull(std::string(argv[5]));
+    float Tflops = (double)2*M*N*K*blocks*4*num_cu* (32*inst_iter) / time_per_loop /1e9;
 
-    //printf("CU:%d, inst:%s, TIPS:%.3f(2x:%.3f, 4x:%.3f), cost:%fms per loop\\n", num_cu, argv[1], tips, 2*tips, 4*tips, time_per_loop);
-    printf("%d\\t%s\\t%.3f\\t%.3f\\t%.3f\\t%.3fms\\n", num_cu, argv[1], tips, 2*tips, 4*tips, time_per_loop);
+    //printf("CU:%d, inst:%s, TIPS: %.3f), cost:%fms per loop\\n", num_cu, argv[1], Tflops, time_per_loop);
+    printf("%d\\t%s\\t%.3f\\t%.3fms\\n", num_cu, argv[1], Tflops, time_per_loop);
 }}
 '''.format(hsaco=k_HSACO, hsakn=k_HSAKN)
         return src
@@ -142,7 +233,7 @@ int main(int argc, char ** argv){{
 class asm_src_t:
     def __init__(self,arch,bench_inst):
         self.arch = arch
-        self.bench_inst = bench_inst
+        self.bench_inst = bench_inst[0](bench_inst[1], bench_inst[2] ,bench_inst[3], bench_inst[4])   
         self.arch_str = ','.join([arch[3],arch[4],arch[5]])
     def get_asmflags():
         return ""
@@ -163,7 +254,7 @@ class asm_src_t:
             (out, _) = proc.communicate()
             if proc.returncode != 0:
                 print(cmd)
-                msg = "Compilation error:\n"
+                msg = "ASM Compilation error:\n"
                 msg += str(out)
                 raise RuntimeError(msg)
         save_dir = os.getcwd()
@@ -191,7 +282,7 @@ class asm_src_t:
             (out, _) = proc.communicate()
             if proc.returncode != 0:
                 print(cmd)
-                msg = "Compilation error:\n"
+                msg = "DISASM Compilation error:\n"
                 msg += str(out)
                 raise RuntimeError(msg)
         save_dir = os.getcwd()
@@ -210,26 +301,78 @@ class asm_src_t:
 
 .set k_bdx,     256     ; should be 256 in bdx
 .set k_end,     12
-.set v_end,     511     ; hard code to this to let occupancy to be 1.  65536 / 256 = 256
-.set s_blocks,  12
+.set v_end,     128     ; hard code to this to let occupancy to be 1.  65536 / 256 = 256
+.set s_rand,    12
+.set s_iter,    13
+.set s_tmp,     14
 .set s_end,     31
-.set a_end      63
+.set a_end,     63
 .set inst_loop, 256
 
 kernel_func:
-    s_load_dword        s[s_blocks], s[0:1], 8
+    s_load_dword        s[s_rand], s[0:1], 0
+    s_load_dword        s[s_iter], s[0:1], 4
     s_waitcnt           lgkmcnt(0)
+    .cnt=0
+    .rept 128
+        s_sub_u32 s[s_tmp], s[s_rand], .cnt
+        v_mov_b32 v[.cnt], s[s_tmp]
+        .cnt = .cnt + 1
+    .endr
 L_kernel_start:
-    s_sub_u32 s[s_blocks], s[s_blocks], 1
+    s_sub_u32 s[s_iter], s[s_iter], 1
     .itr = 0
     .rept inst_loop
         {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+
+        s_nop 1
+
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+
+        s_nop 1
+
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+
+        s_nop 1
+
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+        {bench_inst}
+
+        s_nop 1
+        
         .itr = .itr+4
         .if .itr > (v_end-4+1)
             .itr = 0
         .endif
     .endr
-    s_cmp_gt_u32 s[s_blocks], 0
+    s_cmp_gt_u32 s[s_iter], 0
     s_cbranch_scc1 L_kernel_start
 
     s_endpgm
@@ -256,15 +399,15 @@ amdhsa.kernels:
     .sgpr_count: 32
     .vgpr_count: 256
     .kernarg_segment_align: 4
-    .kernarg_segment_size: 12
+    .kernarg_segment_size: 8
     .group_segment_fixed_size: 65536
     .private_segment_fixed_size: 0
     .wavefront_size: 64
     .reqd_workgroup_size : [256, 1, 1]
     .max_flat_workgroup_size: 256
     .args:
-    - {{ .name: dummy_ptr,   .size: 8, .offset:   0, .value_kind: global_buffer, .value_type: f32, .address_space: global, .is_const: false}}
-    - {{ .name: inst_blocks, .size: 4, .offset:   8, .value_kind: by_value, .value_type: i32}}
+    - {{ .name: rand_seed,   .size: 4, .offset:   0, .value_kind: by_value, .value_type: f32}}
+    - {{ .name: inst_blocks, .size: 4, .offset:   4, .value_kind: by_value, .value_type: i32}}
 ...
 .end_amdgpu_metadata
 
@@ -324,46 +467,17 @@ L_kernel_start:
         f.write(self.get_src())
 
 bench_inst_dict = [
-    ("v_add_co_u32",     "v[.itr], vcc, v[.itr+1], v[.itr+2]"),
-    ("v_addc_co_u32",    "v[.itr], vcc, v[.itr+1], v[.itr+2], vcc"),
-    ("v_or_b32",         "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_lshl_or_b32",    "v[.itr], v[.itr+1], v[.itr+2], v[.itr+3]"),
-    ("v_lshlrev_b64",    "v[.itr:.itr+1], 8, v[.itr+2:.itr+3]"),
-    ("v_mul_lo_u32",     "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_mul_hi_u32",     "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_mad_u32_u24",    "v[.itr], v[.itr+1], v[.itr+2], v[.itr+3]"),
-    ("v_mul_i32_i24",    "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_add_lshl_u32",    "v[.itr], v[.itr+1], v[.itr+2], v[.itr+3]"),
+    (v_mfma_f32_16x16x16f16,'.itr+0:.itr+3', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3'),
+    (v_mfma_f32_16x16x4f16, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
+    (v_mfma_f32_32x32x4f16, '.itr+0:.itr+31', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+31'),
+    (v_mfma_f32_32x32x8f16, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
+    (v_mfma_f32_4x4x4f16,   '.itr+0:.itr+3' , '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3'),
 
-    ("v_dot2_f32_f16",  "v[.itr], v[.itr+1], v[.itr+2], v[.itr+3]"),
-    ("v_dot4_i32_i8",   "v[.itr], v[.itr+1], v[.itr+2], v[.itr+3]"),
-    ("v_pk_fma_f16",    "v[.itr], v[.itr+1], v[.itr+2], v[.itr+3]"),
-    ("v_swap_b32",       "v[.itr], v[.itr+1]"),
-
-    ("v_fmac_f32",      "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_mac_f32",       "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_mad_f32",       "v[.itr], v[.itr+1], v[.itr+2], v[.itr+3]"),
-    ("v_mac_f16",       "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_pk_mul_f16",    "v[.itr], v[.itr+1], v[.itr+2], op_sel_hi:[1,1]"),
-    ("v_pk_mul_f16",    "v[.itr], v[.itr+1], v[.itr+2]"),
-    ("v_sin_f32",       "v[.itr], v[.itr+1]"),
-    ("v_cos_f16",       "v[.itr], v[.itr+1]"),
-    ("v_sqrt_f32",       "v[.itr], v[.itr+1]"),
-    
-    #F16
-    ("v_mfma_f32_16x16x16f16", "a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]"),
-    ("v_mfma_f32_16x16x4f16", "a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]"),
-    ("v_mfma_f32_32x32x4f16", "a[.itr+0:.itr+31], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+31]"),
-    ("v_mfma_f32_32x32x8f16", "a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]"),
-    ("v_mfma_f32_4x4x4f16", "a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]"),
-
-    #BF16
-    ("v_mfma_f32_16x16x2bf16", "a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]"),
-    ("v_mfma_f32_16x16x8bf16", "a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]"),
-    ("v_mfma_f32_32x32x2bf16", "a[.itr+0:.itr+31], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+31]"),
-    ("v_mfma_f32_32x32x4bf16", "a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]"),
-    ("v_mfma_f32_4x4x2bf16", "a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]")
-
+    #(v_mfma_f32_16x16x16bf16_1k, '.itr+0:.itr+3', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3'),
+    #(v_mfma_f32_16x16x4bf16_1k, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
+    #(v_mfma_f32_32x32x4bf16_1k, '.itr+0:.itr+31', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+31'),
+    #(v_mfma_f32_32x32x8bf16_1k, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
+    #(v_mfma_f32_4x4x4bf16_1k,   '.itr+0:.itr+3' , '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3')
 ]
 
 benched_inst_dict = dict()
@@ -375,7 +489,7 @@ def bench():
             cpp_src.write(f)
         cpp_src.compile(k_CPP_SRC, k_CPP_TARGET, k_WS)
     def prepare_asm(arch, bench_inst):
-        inst = bench_inst.split(' ')[0]
+        inst = bench_inst[0].name()
         if inst in benched_inst_dict:
             cnt = benched_inst_dict[inst]
             cnt = cnt+1
@@ -404,15 +518,20 @@ def bench():
             if not os.path.exists(k_HSACO):
                 print("not exist {}, fail to run".format(k_HSACO))
                 return
-            inst = bench_inst.split(' ')[0]
-            cmd = "./{} {}".format(k_CPP_TARGET, inst)
+            inst = bench_inst[0].name()
+            M = bench_inst[0].m
+            N = bench_inst[0].n
+            K = bench_inst[0].k
+            blocks = bench_inst[0].num_blocks
+            #          inst  M  N  K  blocks
+            cmd = "./{} {} {} {} {} {}".format(k_CPP_TARGET, inst, M, N, K, blocks)
             proc = subprocess.Popen(cmd,
                         stdout=sys.stdout,
                         stderr=sys.stdout,shell=True)
             (out, _) = proc.communicate()
             if proc.returncode != 0:
                 print(cmd)
-                msg = "Compilation error:\n"
+                msg = "Launch Compilation error:\n"
                 msg += str(out)
                 raise RuntimeError(msg)
         save_dir = os.getcwd()
@@ -420,13 +539,12 @@ def bench():
         do_run()
         os.chdir(save_dir)
 
-
     shutil.rmtree(k_WS,True)
     os.mkdir(k_WS)
     prepare_cpp()
-    print("CU\tinstruction\ttips\t2x\t4x\tper_loop")
+    print("CU\tinstruction      \tTflops\tper_loop")
     for item in bench_inst_dict:
-        bench_inst = item[0] + " " + item[1]
+        bench_inst = item
         prepare_asm(k_ARCH, bench_inst)
         run_bench(bench_inst)
 
