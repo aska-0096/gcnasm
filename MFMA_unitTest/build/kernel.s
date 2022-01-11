@@ -27,47 +27,47 @@ L_kernel_start:
     s_sub_u32 s[s_iter], s[s_iter], 1
     .itr = 0
     .rept inst_loop
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
 
         s_nop 1
 
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
 
         s_nop 1
 
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
 
         s_nop 1
 
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
-        v_mfma_f32_16x16x4f16 a[.itr+0:.itr+15], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+15]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
+        v_mfma_f32_4x4x4f16 a[.itr+0:.itr+3], v[.itr+0:.itr+1], v[.itr+2:.itr+3], a[.itr+0:.itr+3]   
 
         s_nop 1
         

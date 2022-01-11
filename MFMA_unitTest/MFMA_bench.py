@@ -179,8 +179,8 @@ int main(int argc, char ** argv){{
     int total_loop=100;
     int warm_ups = 5;
     int i;
-    int inst_iter = 100;
-    //int inst_loop = 256;
+    int inst_iter = 5;
+    int inst_loop = 256;
     int bdx = 256;
     int gdx = num_cu;
 
@@ -220,7 +220,7 @@ int main(int argc, char ** argv){{
     int N = std::stoull(std::string(argv[3]));
     int K = std::stoull(std::string(argv[4]));
     int blocks = std::stoull(std::string(argv[5]));
-    float Tflops = (double)2*M*N*K*blocks*4*num_cu* (32*inst_iter) / time_per_loop /1e9;
+    float Tflops = (double)2*inst_loop*M*N*K*blocks*4*num_cu* (32*inst_iter) / time_per_loop /1e9;
 
     //printf("CU:%d, inst:%s, TIPS: %.3f), cost:%fms per loop\\n", num_cu, argv[1], Tflops, time_per_loop);
     printf("%d\\t%s\\t%.3f\\t%.3fms\\n", num_cu, argv[1], Tflops, time_per_loop);
