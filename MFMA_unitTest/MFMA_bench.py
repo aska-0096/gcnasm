@@ -6,6 +6,15 @@ import os
 import shutil
 import sys
 
+if len(sys.argv) == 2: 
+    k_ARCH = sys.argv[1]
+else:
+    print('Invalid input, using default arch as gfx908')
+    k_ARCH = 'gfx908'
+
+k_SCLK = 1.5
+if k_ARCH == 'gfx90a':
+    k_SCLK = 1.7
 k_HSACO = "kernel.co"
 k_HSAKN = "kernel_func"
 k_WS = "build"
@@ -13,7 +22,6 @@ k_CPP_SRC = "bench.cpp"
 k_CPP_TARGET = "bench.exe"
 k_ASM_SRC = "kernel.s"
 k_ASM_TARGET = k_HSACO
-k_ARCH = "gfx908"
 k_INST_LOOP = [256, 512, 768, 1024]
 USE_HIP_CLANG = True
 
@@ -179,17 +187,26 @@ int main(int argc, char ** argv){{
     int total_loop=100;
     int warm_ups = 5;
     int i;
-    int inst_iter = 1500;
     int bdx = 256;
     int gdx = num_cu;
-
-    float rand_seed = ((float)(rand() % 100));
+    
+    int M = std::stoull(std::string(argv[2]));
+    int N = std::stoull(std::string(argv[3]));
+    int K = std::stoull(std::string(argv[4]));
+    int blocks = std::stoull(std::string(argv[5]));
+    int cycles = std::stoull(std::string(argv[6]));
+    int inst_iter = 1500*8192/(M*N*K*blocks);
+    srand(time(NULL));
+    float rand_seed = ((float)(rand() % 1000))/1000.0;
     struct {{
         float rand_seed;
         int inst_iter;
+        int s_nop;
     }} args;
     size_t arg_size = sizeof(args);
     args.inst_iter = inst_iter;
+    args.rand_seed = rand_seed;
+
     void* config[] = {{HIP_LAUNCH_PARAM_BUFFER_POINTER, &args, HIP_LAUNCH_PARAM_BUFFER_SIZE,
                     &arg_size, HIP_LAUNCH_PARAM_END}};
 
@@ -215,25 +232,34 @@ int main(int argc, char ** argv){{
     float time_per_loop = elapsed_ms/total_loop;
     //float tips = (double)inst_loop*inst_blocks*num_cu*bdx/time_per_loop/1e9;
     //argv 2~5 = M, N, K, blocks
-    int M = std::stoull(std::string(argv[2]));
-    int N = std::stoull(std::string(argv[3]));
-    int K = std::stoull(std::string(argv[4]));
-    int blocks = std::stoull(std::string(argv[5]));
+    float SCLK = {SCLK};
     float Tflops = (double)2*M*N*K*blocks*4*num_cu* (32*inst_iter) / time_per_loop /1e9;
+    float TheTflops = (double)2*M*N*K*blocks*4*num_cu*SCLK/cycles/1e3;
+    float RelPerf = Tflops/TheTflops;
 
     //printf("CU:%d, inst:%s, TIPS: %.3f), cost:%fms per loop\\n", num_cu, argv[1], Tflops, time_per_loop);
-    printf("%d\\t%s\\t%.3f\\t%.3fms\\n", num_cu, argv[1], Tflops, time_per_loop);
+    printf("%d\\t%s\\t%.3f\\t%.3fms    \\t%.3f \\n", num_cu, argv[1], Tflops, time_per_loop, RelPerf);
 }}
-'''.format(hsaco=k_HSACO, hsakn=k_HSAKN)
+'''.format(hsaco=k_HSACO, hsakn=k_HSAKN, SCLK=k_SCLK)
         return src
     def write(self,f):
         f.write(self.get_src())
 
 class asm_src_t:
     def __init__(self,arch,bench_inst):
-        self.arch = arch
-        self.bench_inst = bench_inst[0](bench_inst[1], bench_inst[2] ,bench_inst[3], bench_inst[4])   
+        self.arch = arch   
         self.arch_str = ','.join([arch[3],arch[4],arch[5]])
+        if arch == 'gfx908':
+            self.acc_offset = ""
+        else:
+            self.acc_offset = ".amdhsa_accum_offset 128"
+        self.dst_iter   = bench_inst.num_a_c
+        self.srcA_iter  = bench_inst.num_v_a
+        self.srcB_iter  = bench_inst.num_v_b
+        self.bench_inst = bench_inst('.a_itr+0 :.a_itr+{}'.format(self.dst_iter-1), 
+                                     '.v_itr+0 :.v_itr+{}'.format(self.srcA_iter-1), 
+                                     '.v_itr+{}:.v_itr+{}'.format(self.srcA_iter, self.srcA_iter+self.srcB_iter-1), 
+                                     '.a_itr+0 :.a_itr+{}'.format(self.dst_iter-1))
     def get_asmflags():
         return ""
     def compile(self, src, target, working_dir):
@@ -303,72 +329,40 @@ class asm_src_t:
 .set v_end,     128     ; hard code to this to let occupancy to be 1.  65536 / 256 = 256
 .set s_rand,    12
 .set s_iter,    13
-.set s_tmp,     14
+.set s_nop,     14
+.set s_tmp,     15
 .set s_end,     31
-.set a_end,     63
-.set inst_loop, 256
+.set a_end,     128
 
 kernel_func:
     s_load_dword        s[s_rand], s[0:1], 0
     s_load_dword        s[s_iter], s[0:1], 4
+    s_load_dword        s[s_nop], s[0:1], 8
     s_waitcnt           lgkmcnt(0)
     .cnt=0
+    .nop = 0
     .rept 128
         s_sub_u32 s[s_tmp], s[s_rand], .cnt
         v_mov_b32 v[.cnt], s[s_tmp]
         .cnt = .cnt + 1
     .endr
+    .a_itr = 0
+    .v_itr = 0
 L_kernel_start:
     s_sub_u32 s[s_iter], s[s_iter], 1
-    .itr = 0
+    .rept 32
         {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-
-        s_nop 1
-
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-
-        s_nop 1
-
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-
-        s_nop 1
-
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-        {bench_inst}
-
-        s_nop 1
-        
-        .itr = .itr+4
-        .if .itr > (v_end-4+1)
-            .itr = 0
+        ;s_nop .nop
+        .a_itr = .a_itr+{a_iter}
+        .if .a_itr > a_end
+            .a_itr = 0
         .endif
+        .v_itr = .v_itr+{v_iter}
+        .if .v_itr > v_end
+            .v_itr = 0
+        .endif
+    .endr
+        
     s_cmp_gt_u32 s[s_iter], 0
     s_cbranch_scc1 L_kernel_start
 
@@ -383,6 +377,7 @@ L_kernel_start:
     .amdhsa_system_vgpr_workitem_id 0
     .amdhsa_next_free_vgpr 256
     .amdhsa_next_free_sgpr 32
+    {acc_offset}
     .amdhsa_ieee_mode 0
     .amdhsa_dx10_clamp 0
 .end_amdhsa_kernel
@@ -396,7 +391,7 @@ amdhsa.kernels:
     .sgpr_count: 32
     .vgpr_count: 256
     .kernarg_segment_align: 4
-    .kernarg_segment_size: 8
+    .kernarg_segment_size: 12
     .group_segment_fixed_size: 65536
     .private_segment_fixed_size: 0
     .wavefront_size: 64
@@ -405,10 +400,11 @@ amdhsa.kernels:
     .args:
     - {{ .name: rand_seed,   .size: 4, .offset:   0, .value_kind: by_value, .value_type: f32}}
     - {{ .name: inst_blocks, .size: 4, .offset:   4, .value_kind: by_value, .value_type: i32}}
+    - {{ .name: s_nop,       .size: 4, .offset:   8, .value_kind: by_value, .value_type: i32}}
 ...
 .end_amdgpu_metadata
 
-'''.format(bench_inst=self.bench_inst)
+'''.format(bench_inst=self.bench_inst, acc_offset=self.acc_offset, a_iter=self.dst_iter, v_iter=self.srcA_iter)
         else:
             asm_src='''\
 .hsa_code_object_version 2,0
@@ -463,19 +459,28 @@ L_kernel_start:
     def write(self,f):
         f.write(self.get_src())
 
-bench_inst_dict = [
-    (v_mfma_f32_16x16x16f16,'.itr+0:.itr+3', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3'),
-    (v_mfma_f32_16x16x4f16, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
-    (v_mfma_f32_32x32x4f16, '.itr+0:.itr+31', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+31'),
-    (v_mfma_f32_32x32x8f16, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
-    (v_mfma_f32_4x4x4f16,   '.itr+0:.itr+3' , '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3'),
-
-    #(v_mfma_f32_16x16x16bf16_1k, '.itr+0:.itr+3', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3'),
-    #(v_mfma_f32_16x16x4bf16_1k, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
-    #(v_mfma_f32_32x32x4bf16_1k, '.itr+0:.itr+31', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+31'),
-    #(v_mfma_f32_32x32x8bf16_1k, '.itr+0:.itr+15', '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+15'),
-    #(v_mfma_f32_4x4x4bf16_1k,   '.itr+0:.itr+3' , '.itr+0:.itr+1', '.itr+2:.itr+3', '.itr+0:.itr+3')
+bench_inst_dict_gfx908 = [
+    (v_mfma_f32_16x16x16f16),
+    (v_mfma_f32_16x16x4f16 ),
+    (v_mfma_f32_32x32x4f16 ),
+    (v_mfma_f32_32x32x8f16 ),
+    (v_mfma_f32_4x4x4f16   )
 ]
+
+bench_inst_dict_gfx90a = [
+    (v_mfma_f32_16x16x16f16),
+    (v_mfma_f32_16x16x4f16 ),
+    (v_mfma_f32_32x32x4f16 ),
+    (v_mfma_f32_32x32x8f16 ),
+    (v_mfma_f32_4x4x4f16   ),
+
+    (v_mfma_f32_16x16x16bf16_1k),
+    (v_mfma_f32_16x16x4bf16_1k ),
+    (v_mfma_f32_32x32x4bf16_1k ),
+    (v_mfma_f32_32x32x8bf16_1k ),
+    (v_mfma_f32_4x4x4bf16_1k   )
+]
+
 
 benched_inst_dict = dict()
 
@@ -486,7 +491,7 @@ def bench():
             cpp_src.write(f)
         cpp_src.compile(k_CPP_SRC, k_CPP_TARGET, k_WS)
     def prepare_asm(arch, bench_inst):
-        inst = bench_inst[0].name()
+        inst = bench_inst.name()
         if inst in benched_inst_dict:
             cnt = benched_inst_dict[inst]
             cnt = cnt+1
@@ -515,13 +520,14 @@ def bench():
             if not os.path.exists(k_HSACO):
                 print("not exist {}, fail to run".format(k_HSACO))
                 return
-            inst = bench_inst[0].name()
-            M = bench_inst[0].m
-            N = bench_inst[0].n
-            K = bench_inst[0].k
-            blocks = bench_inst[0].num_blocks
-            #          inst  M  N  K  blocks
-            cmd = "./{} {} {} {} {} {}".format(k_CPP_TARGET, inst, M, N, K, blocks)
+            inst = bench_inst.name()
+            M = bench_inst.m
+            N = bench_inst.n
+            K = bench_inst.k
+            blocks = bench_inst.num_blocks
+            cycles = bench_inst.cycle
+            #          inst  M  N  K  blocks s_nop
+            cmd = "./{} {} {} {} {} {} {}".format(k_CPP_TARGET, inst, M, N, K, blocks, cycles)
             proc = subprocess.Popen(cmd,
                         stdout=sys.stdout,
                         stderr=sys.stdout,shell=True)
@@ -539,8 +545,12 @@ def bench():
     shutil.rmtree(k_WS,True)
     os.mkdir(k_WS)
     prepare_cpp()
-    print("CU\tinstruction      \tTflops\tper_loop")
-    for item in bench_inst_dict:
+    print("CU\tinstruction      \tTflops\tper_loop\tRelPerf")
+    if k_ARCH == 'gfx908':
+        inst_dict = bench_inst_dict_gfx908
+    else:
+        inst_dict = bench_inst_dict_gfx90a
+    for item in inst_dict:
         bench_inst = item
         prepare_asm(k_ARCH, bench_inst)
         run_bench(bench_inst)
